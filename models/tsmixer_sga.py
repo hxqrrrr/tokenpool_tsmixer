@@ -1,299 +1,333 @@
-# models/tsmixer_sga.py
+"""
+TSMixer + SGA (Scalable Global Attention) for RUL prediction
+在原始 TSMixer 的 Mixer 堆栈之后，串接一个“双轴 squeeze + 自适应融合”的 SGA 门控模块，
+同时对时间维与特征维进行全局加权，最后接回归头。
+"""
+
 import torch
 import torch.nn as nn
-from typing import Literal
-from models.base_model import BaseRULModel
+from .base_model import BaseRULModel
 
-# ---------------- Core Mixer ----------------
-class TimeMixing(nn.Module):
-    """沿时间维度的 MLP（对每个通道共享），含 LayerNorm + 残差 + Dropout"""
-    def __init__(self, seq_len: int, expansion: int = 4, dropout: float = 0.1):
+
+# ======================== SGA: 双轴可扩展全局注意力 ========================
+class SGAGate(nn.Module):
+    """
+    输入:  x ∈ R^{B×T×F}
+    步骤:
+      1) 时间轴 squeeze（沿F聚合） -> A_time ∈ R^{B×T×1}，用小MLP产生时间权重
+      2) 特征轴 squeeze（沿T聚合） -> A_feat ∈ R^{B×1×F}，用小MLP产生特征权重
+      3) 融合:  A = σ( γ · (A_time ⊕ A_feat) + β )    # ⊕ 为广播相加或Hadamard
+      4) 加权:  Y = X ⊙ A
+    说明:
+      - rr_time / rr_feat 控制隐藏层降维比 (reduction ratio)
+      - fuse: 'add' 或 'hadamard'
+    """
+
+    def __init__(
+        self,
+        seq_len: int,
+        num_features: int,
+        rr_time: int = 4,
+        rr_feat: int = 4,
+        dropout: float = 0.05,
+        fuse: str = "add",  # ["add", "hadamard"]
+    ):
         super().__init__()
-        hidden = max(4, int(seq_len * expansion))
-        self.norm = nn.LayerNorm(seq_len)
-        self.mlp = nn.Sequential(
-            nn.Linear(seq_len, hidden),
+        assert rr_time >= 1 and rr_feat >= 1
+        assert fuse in ["add", "hadamard"]
+
+        self.fuse = fuse
+
+        t_hid = max(1, seq_len // rr_time)
+        f_hid = max(1, num_features // rr_feat)
+
+        # 时间轴 MLP：对每个时间步的“全局特征均值”做非线性映射
+        self.time_mlp = nn.Sequential(
+            nn.Linear(1, t_hid),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden, seq_len),
-            nn.Dropout(dropout),
+            nn.Linear(t_hid, 1),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (B, L, C)
-        x_t = x.transpose(1, 2).contiguous()     # (B, C, L)
-        y = self.mlp(self.norm(x_t))
-        y = x_t + y
-        return y.transpose(1, 2).contiguous()    # (B, L, C)
-
-
-class FeatureMixing(nn.Module):
-    """沿特征维度的 MLP（对每个时间步共享），含 LayerNorm + 残差 + Dropout"""
-    def __init__(self, num_features: int, expansion: int = 4, dropout: float = 0.1):
-        super().__init__()
-        hidden = max(4, int(num_features * expansion))
-        self.norm = nn.LayerNorm(num_features)
-        self.mlp = nn.Sequential(
-            nn.Linear(num_features, hidden),
+        # 特征轴 MLP：对每个特征的“全局时间均值”做非线性映射
+        self.feat_mlp = nn.Sequential(
+            nn.Linear(1, f_hid),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden, num_features),
-            nn.Dropout(dropout),
+            nn.Linear(f_hid, 1),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + self.mlp(self.norm(x))        # (B, L, C)
+        # 可学习融合参数
+        self.gamma = nn.Parameter(torch.tensor(1.0))
+        self.beta = nn.Parameter(torch.tensor(0.0))
 
-
-class MixerBlock(nn.Module):
-    """TSMixer Block = TimeMixing -> FeatureMixing"""
-    def __init__(self, seq_len: int, num_features: int,
-                 time_expansion: int = 4, feat_expansion: int = 4,
-                 dropout: float = 0.1):
-        super().__init__()
-        self.time = TimeMixing(seq_len, time_expansion, dropout)
-        self.feat = FeatureMixing(num_features, feat_expansion, dropout)
+        # 最后做一个轻量 LayerNorm 稳定数值（可选）
+        self.post_norm = nn.LayerNorm(num_features)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.feat(self.time(x))
+        # x: [B, T, F]
+        B, T, F = x.shape
 
-# ---------------- SGA: 双维可扩展全局注意力 ----------------
-class SGA2D(nn.Module):
-    """
-    双向 squeeze + 自适应融合 + 残差门控
-      输入 X: [B, L, C]
-      输出 Y: [B, L, C]，其中 Y = X + X ⊙ σ(γ_t·A_time + γ_f·A_feat + β)
-    """
-    def __init__(self, seq_len: int, num_features: int,
-                 time_reduce_ratio: int = 4,
-                 feat_reduce_ratio: int = 4,
-                 dropout: float = 0.05):
-        super().__init__()
-        # 时间方向的门：对 [B,L] 做一个极小 MLP
-        t_hidden = max(4, seq_len // time_reduce_ratio)
-        self.t_norm = nn.LayerNorm(seq_len)
-        self.t_mlp = nn.Sequential(
-            nn.Linear(seq_len, t_hidden),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(t_hidden, seq_len)
-        )
+        # ---- 1) 时间轴 squeeze：沿特征维求均值 -> [B, T, 1] ----
+        t_ctx = x.mean(dim=2, keepdim=True)                  # [B, T, 1]
+        a_time = self.time_mlp(t_ctx)                        # [B, T, 1]
 
-        # 特征方向的门：对 [B,C] 做极小 MLP
-        f_hidden = max(4, num_features // feat_reduce_ratio)
-        self.f_norm = nn.LayerNorm(num_features)
-        self.f_mlp = nn.Sequential(
-            nn.Linear(num_features, f_hidden),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(f_hidden, num_features)
-        )
+        # ---- 2) 特征轴 squeeze：沿时间维求均值 -> [B, 1, F] ----
+        f_ctx = x.mean(dim=1, keepdim=True)                  # [B, 1, F]
+        # 为了复用线性层，按特征逐点映射 (B,1,F)->(B*F,1)->(B,1,F)
+        a_feat = self.feat_mlp(f_ctx.transpose(1, 2)).transpose(1, 2)  # [B, 1, F]
 
-        # 自适应融合参数
-        self.gamma_t = nn.Parameter(torch.tensor(1.0))
-        self.gamma_f = nn.Parameter(torch.tensor(1.0))
-        self.beta    = nn.Parameter(torch.tensor(0.0))
-
-        # 初始化更稳一些
-        for m in [self.t_mlp[-1], self.f_mlp[-1]]:
-            nn.init.zeros_(m.weight); nn.init.zeros_(m.bias)
-
-    @torch.no_grad()
-    def attn_stats(self, A: torch.Tensor):
-        """
-        简单统计：返回 (峰值均值, 覆盖率近似, 末端权重均值)，帮助你在日志里排查注意力是否塌缩
-        A: [B, L, C] 的 sigmoid 后权重
-        """
-        B, L, C = A.shape
-        peak = A.amax(dim=(1,2)).mean().item()
-        cover = (A > 0.01).float().mean().item()
-        end_w = A[:, -1, :].mean().item()
-        return peak, cover, end_w
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # X: [B, L, C]
-        B, L, C = x.shape
-
-        # 时间 squeeze：沿特征均值 -> [B, L]
-        t = x.mean(dim=2)
-        a_t = self.t_mlp(self.t_norm(t)).unsqueeze(-1)   # [B, L, 1]
-
-        # 特征 squeeze：沿时间均值 -> [B, C]
-        f = x.mean(dim=1)
-        a_f = self.f_mlp(self.f_norm(f)).unsqueeze(1)    # [B, 1, C]
-
-        # 融合并 Sigmoid 成门
-        A = torch.sigmoid(self.gamma_t * a_t + self.gamma_f * a_f + self.beta)  # [B, L, C]
-
-        # 残差门控：更稳
-        y = x + x * A
-        return y, A
-
-# ---------------- 带 SGA 的回归器 ----------------
-class TSMixerRegressor(nn.Module):
-    """
-    输入:  (B, L, C)
-    输出:  (B,)
-    结构:  多层 MixerBlock -> (可选) SGA2D -> 时间池化 -> 线性回归
-    """
-    def __init__(self,
-                 input_length: int,
-                 num_features: int,
-                 num_layers: int = 4,
-                 time_expansion: int = 4,
-                 feat_expansion: int = 4,
-                 dropout: float = 0.1,
-                 *,
-                 use_sga: bool = False,
-                 sga_time_rr: int = 4,
-                 sga_feat_rr: int = 4,
-                 sga_dropout: float = 0.05,
-                 pool: Literal["mean", "last", "weighted"] = "mean"):
-        super().__init__()
-        self.pool = pool
-        self.use_sga = use_sga
-
-        self.blocks = nn.ModuleList([
-            MixerBlock(input_length, num_features,
-                       time_expansion=time_expansion,
-                       feat_expansion=feat_expansion,
-                       dropout=dropout)
-            for _ in range(num_layers)
-        ])
-
-        if use_sga:
-            self.sga = SGA2D(input_length, num_features,
-                             time_reduce_ratio=sga_time_rr,
-                             feat_reduce_ratio=sga_feat_rr,
-                             dropout=sga_dropout)
+        # ---- 3) 融合 ----
+        if self.fuse == "add":
+            fused = a_time + a_feat                           # 广播到 [B,T,F]
         else:
-            self.sga = None
+            fused = a_time * a_feat                           # Hadamard 广播
 
-        self.head = nn.Linear(num_features, 1)
-        nn.init.trunc_normal_(self.head.weight, std=0.02)
-        nn.init.zeros_(self.head.bias)
+        gate = torch.sigmoid(self.gamma * fused + self.beta)  # [B, T, F]
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        for blk in self.blocks:
-            x = blk(x)                 # (B, L, C)
-
-        if self.sga is not None:
-            x, _ = self.sga(x)         # (B, L, C)
-
-        # 时间池化
-        if self.pool == "mean":
-            h = x.mean(dim=1)                          # (B, C)
-        elif self.pool == "last":
-            h = x[:, -1, :]                             # (B, C)
-        else:
-            # 末端加权池化（线性递增权重）
-            B, L, _ = x.shape
-            w = torch.linspace(0.1, 1.0, steps=L, device=x.device).view(1, L, 1)
-            h = (x * w).sum(dim=1) / w.sum(dim=1)      # (B, C)
-
-        y = self.head(h).squeeze(-1)   # (B,)
+        # ---- 4) 加权并归一化 ----
+        y = x * gate
+        # 按特征做 LayerNorm，保持分布平稳
+        y = self.post_norm(y)
         return y
 
-# ---------------- 子类：继承 BaseRULModel ----------------
-class TSMixerModel(BaseRULModel):
+
+# ======================== 原始 TSMixer Blocks ========================
+class TSMixerBlock(nn.Module):
+    """TSMixer block with time and feature mixing"""
+
+    def __init__(self, seq_len, num_features, hidden_dim, dropout=0.1):
+        super(TSMixerBlock, self).__init__()
+
+        # Time mixing (across time steps)
+        self.time_mixing = nn.Sequential(
+            nn.Linear(seq_len, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, seq_len),
+            nn.Dropout(dropout),
+        )
+
+        # Feature mixing (across features/sensors)
+        self.feature_mixing = nn.Sequential(
+            nn.Linear(num_features, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, num_features),
+            nn.Dropout(dropout),
+        )
+
+        # Layer normalization
+        self.norm1 = nn.LayerNorm(num_features)
+        self.norm2 = nn.LayerNorm(num_features)
+
+    def forward(self, x):
+        """
+        x: [B, T, F]
+        """
+        # Time mixing with residual connection
+        residual = x
+        x = self.norm1(x)
+        x_t = x.transpose(1, 2)             # [B, F, T]
+        x_t = self.time_mixing(x_t)         # [B, F, T]
+        x = x_t.transpose(1, 2)             # [B, T, F]
+        x = x + residual
+
+        # Feature mixing with residual connection
+        residual = x
+        x = self.norm2(x)
+        x = self.feature_mixing(x)          # [B, T, F]
+        x = x + residual
+
+        return x
+
+
+class TSMixerBackbone(nn.Module):
     """
-    保持与原接口一致；新增 SGA 相关可选参数：
-      - use_sga: 是否启用 SGA
-      - sga_time_rr / sga_feat_rr: 时间/特征方向的压缩比（越大越“轻”）
-      - sga_dropout: SGA 内部的 dropout
-      - pool: "mean" | "last" | "weighted"
+    仅 TSMixer 主干（输入投影 + 若干 Mixer 块）
     """
-    def __init__(self,
-                 input_size: int,
-                 seq_len: int,
-                 num_layers: int = 4,
-                 time_expansion: int = 4,
-                 feat_expansion: int = 4,
-                 dropout: float = 0.1,
-                 *,
-                 use_sga: bool = False,
-                 sga_time_rr: int = 4,
-                 sga_feat_rr: int = 4,
-                 sga_dropout: float = 0.05,
-                 pool: Literal["mean", "last", "weighted"] = "mean"):
-        super().__init__(input_size=input_size, seq_len=seq_len, out_channels=1)
-        self.cfg = dict(
-            num_layers=num_layers,
-            time_expansion=time_expansion,
-            feat_expansion=feat_expansion,
+
+    def __init__(self, seq_len, num_features, hidden_dim=64, num_blocks=4, dropout=0.1):
+        super().__init__()
+        self.input_proj = nn.Linear(num_features, num_features)
+        self.blocks = nn.ModuleList(
+            [TSMixerBlock(seq_len, num_features, hidden_dim, dropout) for _ in range(num_blocks)]
+        )
+
+    def forward(self, x):
+        # x: [B, T, F] 或 [B, Td, P, F]
+        if x.dim() == 4:
+            B, Td, P, F = x.shape
+            x = x.reshape(B, Td * P, F)
+        x = self.input_proj(x)
+        for blk in self.blocks:
+            x = blk(x)
+        return x  # [B, T, F]
+
+
+# ======================== 带 SGA 的 TSMixer 架构 ========================
+class TSMixerWithSGA(nn.Module):
+    """
+    TSMixer 主干 + SGA 门控 + 回归头
+    - SGA 放在 Mixer 堆栈之后，作为"轻头盔"做双轴全局门控
+    - 支持简单线性头或MLP头
+    """
+
+    def __init__(
+        self,
+        seq_len: int,
+        num_features: int,
+        hidden_dim: int = 64,
+        num_blocks: int = 4,
+        dropout: float = 0.1,
+        # SGA 超参
+        sga_time_rr: int = 4,
+        sga_feat_rr: int = 4,
+        sga_dropout: float = 0.05,
+        sga_fuse: str = "add",          # ["add", "hadamard"]
+        # 头部
+        head_pool: str = "mean",        # ["mean", "last", "weighted", "none"]
+        use_mlp_head: bool = True,      # 是否使用MLP输出头
+    ):
+        super().__init__()
+
+        self.backbone = TSMixerBackbone(
+            seq_len=seq_len,
+            num_features=num_features,
+            hidden_dim=hidden_dim,
+            num_blocks=num_blocks,
             dropout=dropout,
-            use_sga=use_sga,
+        )
+
+        self.sga = SGAGate(
+            seq_len=seq_len,
+            num_features=num_features,
+            rr_time=sga_time_rr,
+            rr_feat=sga_feat_rr,
+            dropout=sga_dropout,
+            fuse=sga_fuse,
+        )
+
+        self.head_pool = head_pool
+        self.use_mlp_head = use_mlp_head
+        
+        # 构建输出头
+        if use_mlp_head:
+            # MLP输出头（类似TSMixerRUL）
+            if head_pool == "none":
+                # 不池化，Flatten所有特征
+                input_size = seq_len * num_features
+            else:
+                # 池化后再接MLP
+                input_size = num_features
+            
+            self.reg_head = nn.Sequential(
+                nn.Linear(input_size, hidden_dim * 2),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim * 2, hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, 1)
+            )
+        else:
+            # 简单线性头
+            self.reg_head = nn.Linear(num_features, 1)
+
+    def forward(self, x):
+        """
+        x: [B, T, F] 或 [B, Td, P, F]
+        """
+        h = self.backbone(x)     # [B, T, F]
+        h = self.sga(h)          # [B, T, F]
+
+        # 池化策略
+        if self.head_pool == "mean":
+            h = h.mean(dim=1)                    # [B, F]
+        elif self.head_pool == "last":
+            h = h[:, -1, :]                      # [B, F]
+        elif self.head_pool == "weighted":
+            # 线性递增权重（越接近末尾权重越大）
+            B, T, F = h.shape
+            w = torch.linspace(0.1, 1.0, steps=T, device=h.device).view(1, T, 1)
+            h = (h * w).sum(dim=1) / w.sum(dim=1)  # [B, F]
+        elif self.head_pool == "none":
+            # 不池化，Flatten所有特征
+            h = h.flatten(1)                     # [B, T*F]
+        # else: 保持 [B, T, F] 或其他自定义
+
+        # 通过输出头
+        if self.use_mlp_head:
+            y = self.reg_head(h).squeeze(-1)     # [B]
+        else:
+            y = self.reg_head(h).squeeze(-1)     # [B]
+        
+        return y
+
+
+# ======================== 对接 BaseRULModel 的封装 ========================
+class TSMixerSGARUL(BaseRULModel):
+    """
+    TSMixer + SGA for RUL prediction
+    符合 BaseRULModel 接口规范
+    
+    默认配置：使用 flatten + MLP 输出头（对标TSMixerRUL）
+    
+    用法示例：
+        # 对标TSMixer（默认）
+        model = TSMixerSGARUL(
+            patch_size=5, time_denpen_len=6, num_sensor=14,
+            hidden_dim=64, num_blocks=4, dropout=0.1
+        )
+        
+        # 轻量版本（使用池化）
+        model = TSMixerSGARUL(
+            patch_size=5, time_denpen_len=6, num_sensor=14,
+            hidden_dim=64, num_blocks=4, dropout=0.1,
+            head_pool='mean', use_mlp_head=False
+        )
+    """
+
+    def __init__(
+        self,
+        patch_size: int = 5,
+        time_denpen_len: int = 6,
+        num_sensor: int = 14,
+        hidden_dim: int = 64,
+        num_blocks: int = 4,
+        dropout: float = 0.1,
+        # SGA 超参数
+        sga_time_rr: int = 4,
+        sga_feat_rr: int = 4,
+        sga_dropout: float = 0.05,
+        sga_fuse: str = "add",
+        # 输出头配置（默认对标TSMixer）
+        head_pool: str = "none",
+        use_mlp_head: bool = True,
+    ):
+        super().__init__()  # BaseRULModel.__init__() 不接受参数
+
+        seq_len = time_denpen_len * patch_size
+        
+        self.model = TSMixerWithSGA(
+            seq_len=seq_len,
+            num_features=num_sensor,
+            hidden_dim=hidden_dim,
+            num_blocks=num_blocks,
+            dropout=dropout,
             sga_time_rr=sga_time_rr,
             sga_feat_rr=sga_feat_rr,
             sga_dropout=sga_dropout,
-            pool=pool
-        )
-        self.model = self.build_model().to(self.device)
-
-    # --- 必须实现 ---
-    def build_model(self) -> nn.Module:
-        return TSMixerRegressor(
-            input_length=self.seq_len,
-            num_features=self.input_size,
-            num_layers=self.cfg["num_layers"],
-            time_expansion=self.cfg["time_expansion"],
-            feat_expansion=self.cfg["feat_expansion"],
-            dropout=self.cfg["dropout"],
-            use_sga=self.cfg["use_sga"],
-            sga_time_rr=self.cfg["sga_time_rr"],
-            sga_feat_rr=self.cfg["sga_feat_rr"],
-            sga_dropout=self.cfg["sga_dropout"],
-            pool=self.cfg["pool"],
+            sga_fuse=sga_fuse,
+            head_pool=head_pool,
+            use_mlp_head=use_mlp_head,
         )
 
-    # --- 必须实现 ---
-    def compile(self,
-                learning_rate: float = 1e-3,
-                weight_decay: float = 1e-4,
-                *,
-                scheduler: Literal["onecycle", "plateau", "cosine", "none"] = "plateau",
-                epochs: int = 30,
-                steps_per_epoch: int = 100):
-        self.optimizer = torch.optim.AdamW(self.model.parameters(),
-                                           lr=learning_rate,
-                                           weight_decay=weight_decay)
-        if scheduler == "onecycle":
-            from torch.optim.lr_scheduler import OneCycleLR
-            self.scheduler = OneCycleLR(
-                self.optimizer,
-                max_lr=learning_rate,
-                epochs=epochs,
-                steps_per_epoch=steps_per_epoch,
-                pct_start=0.3,
-                div_factor=25,
-                final_div_factor=100,
-                anneal_strategy='cos'
-            )
-        elif scheduler == "cosine":
-            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                self.optimizer, T_max=epochs
-            )
-        elif scheduler == "plateau":
-            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                self.optimizer, mode="min", factor=0.5, patience=3
-            )
-        else:
-            self.scheduler = None
-
-    # 与之前格式一致的日志
-    def log_training_metrics(self, epoch, epochs, train_rmse, val_rmse_global, 
-                             val_rmse_last, val_score_last, lr):
-        import logging
-        logger = logging.getLogger(__name__)
-        def fmt(v):
-            try:
-                return f"{float(v):.2f}"
-            except Exception:
-                return "N/A"
-        msg = (f"[Epoch {epoch:3d}/{epochs}] "
-               f"train_rmse={fmt(train_rmse)} | "
-               f"val_rmse(global)={fmt(val_rmse_global)} cycles | "
-               f"val_rmse(last)={fmt(val_rmse_last)} cycles | "
-               f"val_score(last)={fmt(val_score_last)} | "
-               f"lr={lr:.2e}")
-        logger.info(msg)
+    def forward(self, x):
+        """
+        Args:
+            x: [batch_size, time_denpen_len, patch_size, num_sensor]
+        Returns:
+            [batch_size] (squeezed output)
+        """
+        return self.model(x)
