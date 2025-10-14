@@ -11,7 +11,7 @@ from pathlib import Path
 
 from dataset import CMAPSSDataset
 from models.tokenpool_tsmixer import TokenPoolTSMixerRUL
-from trainers.rul_trainer import RULTrainer
+from trainer import RULTrainer
 from experiments import ExperimentManager, load_experiment_config, load_batch_configs
 
 

@@ -382,7 +382,7 @@ python main.py --dataset FD002 --model TokenPoolTSMixer \
 多模型投票提升性能：
 
 ```python
-from trainers.rul_trainer import RULTrainer
+from trainer import RULTrainer
 
 models = [
     TokenPoolTSMixerRUL(...),

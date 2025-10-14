@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-from utils.metrics import scoring_function
+from utils import scoring_function
 
 
 class RULTrainer:
