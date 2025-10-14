@@ -54,7 +54,11 @@ class CMAPSSDataset:
         
     def _load_data(self):
         """Load raw data files"""
-        data_dir = os.path.join(self.data_root, 'CMAPSSData')
+        # If data_root already contains 'CMAPSSData', use it directly
+        if 'CMAPSSData' in self.data_root:
+            data_dir = self.data_root
+        else:
+            data_dir = os.path.join(self.data_root, 'CMAPSSData')
         
         # Load training data
         train_path = os.path.join(data_dir, f'train_{self.dataset_name}.txt')

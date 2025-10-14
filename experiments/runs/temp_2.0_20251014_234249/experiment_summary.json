@@ -1,0 +1,50 @@
+{
+  "experiment_name": "temp_2.0",
+  "status": "failed",
+  "start_time": "2025-10-14 23:42:49",
+  "end_time": "2025-10-14 23:44:02",
+  "duration_seconds": 72.9603521823883,
+  "duration_formatted": "0h 1m 13s",
+  "total_epochs": 31,
+  "best_metrics": [
+    13.970499992370605,
+    734.8465576171875
+  ],
+  "config": {
+    "experiment_name": "temp_2.0",
+    "description": "Temperature = 2.0",
+    "model_params": {
+      "num_tokens": 16,
+      "token_dim": 64,
+      "num_heads": 4,
+      "temperature": 2.0,
+      "attn_dropout": 0.15,
+      "use_pos_encoding": true,
+      "hidden_dim": 96,
+      "num_blocks": 3,
+      "dropout": 0.15
+    },
+    "dataset_name": "FD002",
+    "data_params": {
+      "window_sample": 50,
+      "patch_size": 5,
+      "time_denpen_len": 10,
+      "max_rul": 125
+    },
+    "training_params": {
+      "epochs": 50,
+      "batch_size": 128,
+      "lr": 0.0008,
+      "weight_decay": 2e-05,
+      "lr_scheduler": true,
+      "patience": 10,
+      "lr_decay_factor": 0.5,
+      "lr_patience": 5
+    },
+    "output": {
+      "save_checkpoint": true,
+      "save_predictions": true,
+      "save_attention_weights": false
+    }
+  }
+}

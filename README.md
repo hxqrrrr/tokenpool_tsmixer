@@ -1,10 +1,12 @@
-# TokenPool-TSMixer for RUL Prediction
+# TokenPool-TSMixer RUL Prediction Framework
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 
-🚀 **TokenPool-TSMixer**: 一种基于自适应序列压缩的高效剩余寿命预测架构
+🚀 **TokenPool-TSMixer**: 专注于航空发动机剩余寿命(RUL)预测的实验框架
+
+**核心特性**：JSON配置驱动 | 批量实验管理 | 自动记录可视化 | 专注TokenPool-TSMixer单一模型
 
 ---
 
@@ -172,28 +174,49 @@ CMAPSSData/
 ├── ...
 ```
 
-### 训练模型
+### 运行实验
+
+#### 方式1：快速实验（使用默认配置）
 
 ```bash
-# 训练 FD001（单工况单故障）
-python main.py --dataset FD001 --model TokenPoolTSMixer
+# 使用默认配置快速运行
+python main.py --quick --dataset FD001
 
-# 训练 FD002（多工况单故障）- 推荐配置
-python main.py --dataset FD002 --model TokenPoolTSMixer \
-    --temperature 1.6 --num_tokens 16 --token_dim 64 \
-    --hidden_dim 96 --num_blocks 3 --dropout 0.15
-
-# 训练 FD004（最复杂）
-python main.py --dataset FD004 --model TokenPoolTSMixer \
-    --temperature 1.8 --num_tokens 16
+# 快速运行并覆盖参数
+python main.py --quick --dataset FD002 --temperature 1.6 --lr 0.0008
 ```
 
-### 评估模型
+#### 方式2：使用JSON配置文件
 
 ```bash
-# 在测试集上评估
-python main.py --dataset FD002 --model TokenPoolTSMixer --eval_only \
-    --checkpoint ./checkpoints/best_score_TokenPoolTSMixer_FD002.pth
+# 单个实验
+python main.py --config experiments/configs/single_experiment.json
+
+# 覆盖配置文件中的参数
+python main.py --config experiments/configs/single_experiment.json --temperature 1.8
+```
+
+#### 方式3：批量实验
+
+```bash
+# 温度参数扫描（4个实验）
+python main.py --batch experiments/configs/batch_temperature_sweep.json
+
+# 窗口长度扫描（4个实验）
+python main.py --batch experiments/configs/batch_window_sweep.json
+```
+
+### 查看实验结果
+
+```bash
+# 可视化训练历史
+python experiments/visualize.py experiments/runs/<exp_name> --plot history
+
+# 查看预测结果
+python experiments/visualize.py experiments/runs/<exp_name> --plot predictions
+
+# 生成所有图表
+python experiments/visualize.py experiments/runs/<exp_name> --plot all
 ```
 
 ---
@@ -202,20 +225,31 @@ python main.py --dataset FD002 --model TokenPoolTSMixer --eval_only \
 
 ```
 tokenpool_tsmixer/
-├── configs/                    # 配置文件
+├── experiments/                # 🔥 实验管理框架
 │   ├── __init__.py
-│   └── config.py              # 模型和数据集配置
+│   ├── config_loader.py       # JSON配置加载器
+│   ├── experiment_manager.py  # 实验管理和日志
+│   ├── visualize.py           # 可视化工具
+│   ├── README.md              # 实验框架文档
+│   ├── configs/               # 实验配置文件
+│   │   ├── single_experiment.json
+│   │   ├── batch_temperature_sweep.json
+│   │   └── batch_window_sweep.json
+│   └── runs/                  # 实验运行记录（自动生成）
+│       └── <exp_name>_<timestamp>/
+│           ├── checkpoints/   # 模型检查点
+│           ├── logs/          # 训练日志
+│           ├── results/       # 预测结果
+│           ├── config/        # 配置备份
+│           └── experiment_summary.json
 ├── dataset/                    # 数据加载
 │   ├── __init__.py
 │   └── cmapss_dataset.py      # C-MAPSS 数据集处理
 ├── models/                     # 模型定义
 │   ├── __init__.py
 │   ├── base_model.py          # 基类
-│   ├── tokenpool_tsmixer.py   # 🔥 核心模型
-│   ├── tsmixer.py             # TSMixer 基础架构
-│   ├── tsmixer_sga.py         # TSMixer + SGA
-│   ├── stgnn_rul.py           # STGNN 对比模型
-│   └── multiscale_tokenpool_tsmixer.py  # 多尺度变体
+│   ├── tokenpool_tsmixer.py   # 🔥 核心模型（专注此模型）
+│   └── tsmixer.py             # TSMixer 基础架构
 ├── trainers/                   # 训练器
 │   ├── __init__.py
 │   └── rul_trainer.py         # RUL 训练流程
@@ -223,7 +257,7 @@ tokenpool_tsmixer/
 │   ├── __init__.py
 │   ├── logger.py              # 日志记录
 │   └── metrics.py             # 评估指标
-├── main.py                     # 🚀 主入口
+├── main.py                     # 🚀 主入口（支持JSON配置和批量实验）
 ├── requirements.txt            # 依赖列表
 ├── .gitignore
 └── README.md

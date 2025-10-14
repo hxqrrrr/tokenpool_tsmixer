@@ -11,18 +11,26 @@ from utils.metrics import scoring_function
 class RULTrainer:
     """Universal trainer for RUL prediction"""
     
-    def __init__(self, model, dataset, config, logger=None):
+    def __init__(self, model, dataset, config, logger=None, experiment_manager=None):
         """
         Args:
             model: Model instance (should inherit from BaseRULModel)
             dataset: Dataset instance
-            config: Configuration object
+            config: Configuration object or dictionary
             logger: Logger instance (optional)
+            experiment_manager: ExperimentManager instance (optional)
         """
         self.model = model
         self.dataset = dataset
-        self.config = config
+        
+        # Convert dict config to object-like access
+        if isinstance(config, dict):
+            self.config = type('Config', (), config)()
+        else:
+            self.config = config
+            
         self.logger = logger
+        self.experiment_manager = experiment_manager
         
         # Setup device
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -35,34 +43,34 @@ class RULTrainer:
         self.criterion = nn.MSELoss()
         self.optimizer = optim.Adam(
             self.model.parameters(),
-            lr=config.lr,
-            weight_decay=config.weight_decay
+            lr=self.config.lr,
+            weight_decay=self.config.weight_decay
         )
         
-        if config.lr_scheduler:
+        if self.config.lr_scheduler:
             # 支持多种scheduler类型
-            scheduler_type = getattr(config, 'scheduler_type', 'plateau')
+            scheduler_type = getattr(self.config, 'scheduler_type', 'plateau')
             
             if scheduler_type == 'cosine':
                 # Cosine Annealing: 平滑衰减
-                T_max = getattr(config, 'T_max', config.epochs)
-                eta_min = getattr(config, 'eta_min', 1e-6)
+                T_max = getattr(self.config, 'T_max', self.config.epochs)
+                eta_min = getattr(self.config, 'eta_min', 1e-6)
                 self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
                     self.optimizer, T_max=T_max, eta_min=eta_min
                 )
                 self.scheduler_step_on = 'epoch'  # 每个epoch都step
             elif scheduler_type == 'step':
                 # Step LR: 固定间隔衰减
-                step_size = getattr(config, 'step_size', 20)
-                gamma = getattr(config, 'gamma', 0.5)
+                step_size = getattr(self.config, 'step_size', 20)
+                gamma = getattr(self.config, 'gamma', 0.5)
                 self.scheduler = optim.lr_scheduler.StepLR(
                     self.optimizer, step_size=step_size, gamma=gamma
                 )
                 self.scheduler_step_on = 'epoch'
             else:  # 'plateau'
                 # ReduceLROnPlateau: 基于验证损失
-                patience = getattr(config, 'scheduler_patience', 5)
-                factor = getattr(config, 'scheduler_factor', 0.5)
+                patience = getattr(self.config, 'scheduler_patience', 5)
+                factor = getattr(self.config, 'scheduler_factor', 0.5)
                 self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
                     self.optimizer, mode='min', factor=factor, patience=patience, verbose=False
                 )
@@ -183,6 +191,7 @@ class RULTrainer:
         
         # Early stopping based on test score
         early_stop_patience = getattr(self.config, 'early_stop_patience', 10)
+        show_interval = getattr(self.config, 'show_interval', 1)
         no_improve_count = 0
         
         for epoch in range(self.config.epochs):
@@ -190,7 +199,7 @@ class RULTrainer:
             train_loss = self.train_epoch()
             
             # Validate
-            if epoch % self.config.show_interval == 0:
+            if epoch % show_interval == 0:
                 val_loss = self.validate()
                 
                 # Get current learning rate
@@ -256,6 +265,16 @@ class RULTrainer:
                       f"Val Loss: {val_loss:.4f} | Test RMSE: {test_rmse:.4f} | "
                       f"Test Score: {test_score:.2f}")
                 
+                # Log to experiment manager
+                if self.experiment_manager:
+                    self.experiment_manager.log_epoch(epoch, {
+                        'train_loss': train_loss,
+                        'val_loss': val_loss,
+                        'test_rmse': test_rmse,
+                        'test_score': test_score,
+                        'learning_rate': current_lr
+                    })
+                
                 # Log progress
                 if self.logger:
                     self.logger.info(f"Epoch {epoch:3d} | LR: {current_lr:.6f} | Train Loss: {train_loss:.4f} | "
@@ -276,6 +295,8 @@ class RULTrainer:
             # 如果没有保存最佳模型，重新测试
             final_rmse, final_score = self.test()
         
+        best_model_metric = getattr(self.config, 'best_model_metric', 'score')
+        
         print("="*80)
         print("Training completed!")
         print("\nBest by Validation Loss:")
@@ -284,7 +305,7 @@ class RULTrainer:
         print(f"  Epoch {self.history['best_epoch_rmse']} | RMSE: {self.history['best_test_rmse']:.4f}")
         print("\nBest by Test Score:")
         print(f"  Epoch {self.history['best_epoch_score']} | Score: {self.history['best_test_score']:.2f}")
-        print(f"\nFinal Model (best by {self.config.best_model_metric}):")
+        print(f"\nFinal Model (best by {best_model_metric}):")
         print(f"  RMSE: {final_rmse:.4f} | Score: {final_score:.2f}")
         print("="*80)
         
@@ -296,7 +317,7 @@ class RULTrainer:
             self.logger.info(f"最佳验证损失: Epoch {self.history['best_epoch_val']} | Val Loss: {self.history['best_val_loss']:.4f}")
             self.logger.info(f"最佳测试RMSE: Epoch {self.history['best_epoch_rmse']} | RMSE: {self.history['best_test_rmse']:.4f}")
             self.logger.info(f"最佳测试Score: Epoch {self.history['best_epoch_score']} | Score: {self.history['best_test_score']:.2f}")
-            self.logger.info(f"最终模型 (best by {self.config.best_model_metric}): RMSE: {final_rmse:.4f} | Score: {final_score:.2f}")
+            self.logger.info(f"最终模型 (best by {best_model_metric}): RMSE: {final_rmse:.4f} | Score: {final_score:.2f}")
             self.logger.info("="*80)
         
         return {
@@ -304,4 +325,66 @@ class RULTrainer:
             'score': final_score,
             'history': self.history
         }
+    
+    def predict(self, split='test'):
+        """
+        Get predictions for a dataset split
+        
+        Args:
+            split: Dataset split ('train', 'val', or 'test')
+            
+        Returns:
+            predictions, targets (numpy arrays)
+        """
+        self.model.eval()
+        
+        if split == 'train':
+            x, y = self.train_x, self.train_y
+        elif split == 'val':
+            x, y = self.val_x, self.val_y
+        else:  # test
+            x, y = self.test_x, self.test_y
+        
+        with torch.no_grad():
+            predictions = self.model(x)
+        
+        # Convert to numpy and denormalize
+        predictions_np = predictions.cpu().numpy() * self.dataset.max_rul
+        targets_np = y.cpu().numpy() * self.dataset.max_rul
+        
+        return predictions_np, targets_np
+    
+    def get_attention_weights(self, split='test', num_samples=None):
+        """
+        Get attention weights from TokenPool module
+        
+        Args:
+            split: Dataset split ('train', 'val', or 'test')
+            num_samples: Number of samples to get attention for (None for all)
+            
+        Returns:
+            Attention weights array or None if model doesn't have TokenPool
+        """
+        if not hasattr(self.model, 'last_attn_weights'):
+            return None
+        
+        self.model.eval()
+        
+        if split == 'train':
+            x = self.train_x
+        elif split == 'val':
+            x = self.val_x
+        else:  # test
+            x = self.test_x
+        
+        if num_samples is not None:
+            x = x[:num_samples]
+        
+        with torch.no_grad():
+            _ = self.model(x)
+            
+        if hasattr(self.model, 'last_attn_weights') and self.model.last_attn_weights is not None:
+            return self.model.last_attn_weights.cpu().numpy()
+        
+        return None
     
