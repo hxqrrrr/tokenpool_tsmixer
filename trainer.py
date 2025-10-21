@@ -246,6 +246,11 @@ class RULTrainer:
                         'test_rmse': test_rmse,
                         'test_score': test_score
                     }
+                    
+                    # Save checkpoint with complete configuration
+                    if self.experiment_manager:
+                        self._save_checkpoint(epoch, val_loss, test_rmse, test_score)
+                    
                     no_improve_count = 0  # Reset counter
                 else:
                     no_improve_count += 1
@@ -387,4 +392,97 @@ class RULTrainer:
             return self.model.last_attn_weights.cpu().numpy()
         
         return None
+    
+    def _save_checkpoint(self, epoch, val_loss, test_rmse, test_score):
+        """
+        Save checkpoint with complete configuration information
+        
+        Args:
+            epoch: Current epoch
+            val_loss: Validation loss
+            test_rmse: Test RMSE
+            test_score: Test score
+        """
+        # Collect metrics
+        metrics = {
+            'test_rmse': test_rmse,
+            'test_score': test_score,
+            'val_loss': val_loss
+        }
+        
+        # Collect training parameters
+        training_params = {
+            'lr': self.config.lr,
+            'batch_size': self.config.batch_size,
+            'weight_decay': self.config.weight_decay,
+            'epochs': self.config.epochs,
+            'lr_scheduler': self.config.lr_scheduler,
+        }
+        
+        # Add scheduler-specific parameters if available
+        if hasattr(self.config, 'scheduler_type'):
+            training_params['scheduler_type'] = self.config.scheduler_type
+        if hasattr(self.config, 'scheduler_patience'):
+            training_params['scheduler_patience'] = self.config.scheduler_patience
+        if hasattr(self.config, 'scheduler_factor'):
+            training_params['scheduler_factor'] = self.config.scheduler_factor
+        if hasattr(self.config, 'early_stop_patience'):
+            training_params['early_stop_patience'] = self.config.early_stop_patience
+        
+        # Collect data parameters
+        data_params = {
+            'dataset_name': self.dataset.dataset_name,
+            'window_sample': self.dataset.window_sample,
+            'patch_size': self.dataset.seq_len,
+            'time_denpen_len': self.dataset.time_denpen_len,
+            'max_rul': self.dataset.max_rul,
+            'num_sensor': 14  # CMAPSS has 14 sensors
+        }
+        
+        # Collect model parameters
+        model_params = {
+            'model_name': self.model.get_model_name()
+        }
+        
+        # Add model-specific parameters
+        if hasattr(self.config, 'hidden_dim'):
+            model_params['hidden_dim'] = self.config.hidden_dim
+        if hasattr(self.config, 'num_blocks'):
+            model_params['num_blocks'] = self.config.num_blocks
+        if hasattr(self.config, 'dropout'):
+            model_params['dropout'] = self.config.dropout
+        
+        # TokenPool-specific parameters
+        if hasattr(self.config, 'num_tokens'):
+            model_params['num_tokens'] = self.config.num_tokens
+        if hasattr(self.config, 'token_dim'):
+            model_params['token_dim'] = self.config.token_dim
+        if hasattr(self.config, 'num_heads'):
+            model_params['num_heads'] = self.config.num_heads
+        if hasattr(self.config, 'temperature'):
+            model_params['temperature'] = self.config.temperature
+        if hasattr(self.config, 'attn_dropout'):
+            model_params['attn_dropout'] = self.config.attn_dropout
+        if hasattr(self.config, 'use_pos_encoding'):
+            model_params['use_pos_encoding'] = self.config.use_pos_encoding
+        
+        # SGA-specific parameters (if applicable)
+        if hasattr(self.config, 'sga_time_rr'):
+            model_params['sga_time_rr'] = self.config.sga_time_rr
+        if hasattr(self.config, 'sga_feat_rr'):
+            model_params['sga_feat_rr'] = self.config.sga_feat_rr
+        if hasattr(self.config, 'sga_dropout'):
+            model_params['sga_dropout'] = self.config.sga_dropout
+        if hasattr(self.config, 'sga_fuse'):
+            model_params['sga_fuse'] = self.config.sga_fuse
+        
+        # Save checkpoint
+        self.experiment_manager.save_checkpoint(
+            model=self.model,
+            epoch=epoch,
+            metrics=metrics,
+            training_params=training_params,
+            data_params=data_params,
+            model_params=model_params
+        )
     

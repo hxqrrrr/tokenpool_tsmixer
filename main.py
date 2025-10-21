@@ -164,14 +164,13 @@ def run_single_experiment(config: dict):
         print(f"[TRAIN] Starting training...")
         print(f"{'='*80}\n")
         
-        trainer.train()
+        results = trainer.train()
         
-        # Test model
-        print(f"\n{'='*80}")
-        print(f"[TEST] Evaluating on test set...")
-        print(f"{'='*80}\n")
-        
-        test_results = trainer.test()
+        # Extract test results from training
+        test_results = {
+            'rmse': results['rmse'],
+            'score': results['score']
+        }
         
         # Log test results
         exp_manager.log_test_results(test_results)

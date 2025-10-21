@@ -34,12 +34,13 @@ class ExperimentManager:
         self.exp_dir = self.base_dir / 'runs' / f"{experiment_name}_{timestamp}"
         self.exp_dir.mkdir(parents=True, exist_ok=True)
         
-        # Create subdirectories (只创建logs, results, config，不创建checkpoints)
+        # Create subdirectories
         self.log_dir = self.exp_dir / 'logs'
         self.result_dir = self.exp_dir / 'results'
         self.config_dir = self.exp_dir / 'config'
+        self.checkpoint_dir = self.exp_dir / 'checkpoints'
         
-        for dir_path in [self.log_dir, self.result_dir, self.config_dir]:
+        for dir_path in [self.log_dir, self.result_dir, self.config_dir, self.checkpoint_dir]:
             dir_path.mkdir(parents=True, exist_ok=True)
         
         # Initialize tracking
@@ -107,31 +108,50 @@ class ExperimentManager:
                 print(f"  {key}: {value}")
         print(f"{'='*80}\n")
     
-    # 已禁用：不保存模型检查点
-    # def save_checkpoint(self, model, optimizer, epoch: int, metrics: Dict[str, float], 
-    #                    checkpoint_name: str = 'best_model.pth'):
-    #     """
-    #     Save model checkpoint
-    #     
-    #     Args:
-    #         model: PyTorch model
-    #         optimizer: Optimizer
-    #         epoch: Current epoch
-    #         metrics: Current metrics
-    #         checkpoint_name: Name of checkpoint file
-    #     """
-    #     checkpoint_path = self.checkpoint_dir / checkpoint_name
-    #     
-    #     checkpoint = {
-    #         'epoch': epoch,
-    #         'model_state_dict': model.state_dict(),
-    #         'optimizer_state_dict': optimizer.state_dict(),
-    #         'metrics': metrics,
-    #         'config': self.config
-    #     }
-    #     
-    #     torch.save(checkpoint, checkpoint_path)
-    #     print(f"[SAVE] Checkpoint saved: {checkpoint_path}")
+    def save_checkpoint(self, model, epoch: int, metrics: Dict[str, float], 
+                       training_params: Dict[str, Any], data_params: Dict[str, Any],
+                       model_params: Dict[str, Any]):
+        """
+        Save model checkpoint with complete configuration
+        
+        Args:
+            model: PyTorch model
+            epoch: Current epoch
+            metrics: Current metrics (test_rmse, test_score, val_loss)
+            training_params: Training parameters (lr, batch_size, etc.)
+            data_params: Data parameters (window_sample, patch_size, etc.)
+            model_params: Model parameters (hidden_dim, num_blocks, etc.)
+        """
+        # Create checkpoint filename with epoch and score
+        score = metrics.get('test_score', 0)
+        checkpoint_name = f"best_model_epoch{epoch:03d}_score{score:.0f}.pth"
+        checkpoint_path = self.checkpoint_dir / checkpoint_name
+        
+        # Build comprehensive checkpoint
+        checkpoint = {
+            'epoch': epoch,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'model_state_dict': model.state_dict(),
+            
+            # Performance metrics
+            'metrics': metrics,
+            
+            # Training parameters
+            'training_params': training_params,
+            
+            # Data parameters
+            'data_params': data_params,
+            
+            # Model parameters
+            'model_params': model_params,
+            
+            # Full config for reference
+            'full_config': self.config
+        }
+        
+        torch.save(checkpoint, checkpoint_path)
+        print(f"[SAVE] Checkpoint saved: {checkpoint_path}")
+        print(f"       Epoch: {epoch} | Score: {score:.2f} | RMSE: {metrics.get('test_rmse', 0):.4f}")
     
     def save_predictions(self, predictions: np.ndarray, targets: np.ndarray, 
                         dataset_split: str = 'test'):
@@ -217,10 +237,9 @@ class ExperimentManager:
         print(f"[END] Summary saved: {summary_path}")
         print(f"{'='*80}\n")
     
-    # 已禁用：不保存模型检查点
-    # def get_checkpoint_path(self, checkpoint_name: str = 'best_model.pth') -> Path:
-    #     """Get path to checkpoint file"""
-    #     return self.checkpoint_dir / checkpoint_name
+    def get_checkpoint_path(self, checkpoint_name: str = 'best_model.pth') -> Path:
+        """Get path to checkpoint file"""
+        return self.checkpoint_dir / checkpoint_name
     
     def get_result_path(self, filename: str) -> Path:
         """Get path to result file"""
