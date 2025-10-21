@@ -106,7 +106,7 @@ python inference.py experiments/runs/<exp_name> --fast
 ```
 rebuild/
 ├── main.py                          # 训练入口
-├── inference.py                     # 批量推理
+├── inference.py                     # 批量推理 ⭐
 ├── trainer.py                       # 训练器
 ├── dataset.py                       # 数据加载
 ├── config.py                        # 配置管理
