@@ -306,8 +306,8 @@ Examples:
                        help='Override number of epochs')
     parser.add_argument('--batch_size', type=int,
                        help='Override batch size')
-    parser.add_argument('--seed', type=int, default=42,
-                       help='Random seed (default: 42)')
+    parser.add_argument('--seed', type=int, default=None,
+                       help='Random seed (override config file seed)')
     
     args = parser.parse_args()
     
