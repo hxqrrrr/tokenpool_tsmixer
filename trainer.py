@@ -444,37 +444,53 @@ class RULTrainer:
             'model_name': self.model.get_model_name()
         }
         
-        # Add model-specific parameters
-        if hasattr(self.config, 'hidden_dim'):
-            model_params['hidden_dim'] = self.config.hidden_dim
-        if hasattr(self.config, 'num_blocks'):
-            model_params['num_blocks'] = self.config.num_blocks
-        if hasattr(self.config, 'dropout'):
-            model_params['dropout'] = self.config.dropout
+        # 从model对象直接读取参数（优先级最高，确保与实际模型一致）
+        model_name = self.model.get_model_name()
         
-        # TokenPool-specific parameters
-        if hasattr(self.config, 'num_tokens'):
-            model_params['num_tokens'] = self.config.num_tokens
-        if hasattr(self.config, 'token_dim'):
-            model_params['token_dim'] = self.config.token_dim
-        if hasattr(self.config, 'num_heads'):
-            model_params['num_heads'] = self.config.num_heads
-        if hasattr(self.config, 'temperature'):
-            model_params['temperature'] = self.config.temperature
-        if hasattr(self.config, 'attn_dropout'):
-            model_params['attn_dropout'] = self.config.attn_dropout
-        if hasattr(self.config, 'use_pos_encoding'):
-            model_params['use_pos_encoding'] = self.config.use_pos_encoding
-        
-        # SGA-specific parameters (if applicable)
-        if hasattr(self.config, 'sga_time_rr'):
-            model_params['sga_time_rr'] = self.config.sga_time_rr
-        if hasattr(self.config, 'sga_feat_rr'):
-            model_params['sga_feat_rr'] = self.config.sga_feat_rr
-        if hasattr(self.config, 'sga_dropout'):
-            model_params['sga_dropout'] = self.config.sga_dropout
-        if hasattr(self.config, 'sga_fuse'):
-            model_params['sga_fuse'] = self.config.sga_fuse
+        if model_name == 'TokenPoolTSMixerRUL':
+            # 直接从model读取TokenPool参数（确保参数完整且正确）
+            model_params['num_tokens'] = self.model.num_tokens
+            model_params['token_dim'] = self.model.token_dim
+            model_params['num_heads'] = self.model.num_heads
+            model_params['temperature'] = self.model.temperature
+            model_params['attn_dropout'] = self.model.attn_dropout
+            model_params['use_pos_encoding'] = self.model.use_pos_encoding
+            model_params['hidden_dim'] = self.model.hidden_dim
+            model_params['num_blocks'] = self.model.num_blocks
+            model_params['dropout'] = self.model.dropout
+        else:
+            # 其他模型：从config读取（保持原有逻辑）
+            # Add model-specific parameters
+            if hasattr(self.config, 'hidden_dim'):
+                model_params['hidden_dim'] = self.config.hidden_dim
+            if hasattr(self.config, 'num_blocks'):
+                model_params['num_blocks'] = self.config.num_blocks
+            if hasattr(self.config, 'dropout'):
+                model_params['dropout'] = self.config.dropout
+            
+            # TokenPool-specific parameters
+            if hasattr(self.config, 'num_tokens'):
+                model_params['num_tokens'] = self.config.num_tokens
+            if hasattr(self.config, 'token_dim'):
+                model_params['token_dim'] = self.config.token_dim
+            if hasattr(self.config, 'num_heads'):
+                model_params['num_heads'] = self.config.num_heads
+            if hasattr(self.config, 'temperature'):
+                model_params['temperature'] = self.config.temperature
+            if hasattr(self.config, 'attn_dropout'):
+                model_params['attn_dropout'] = self.config.attn_dropout
+            if hasattr(self.config, 'use_pos_encoding'):
+                model_params['use_pos_encoding'] = self.config.use_pos_encoding
+            
+            # SGA-specific parameters (if applicable)
+            if hasattr(self.config, 'sga_time_rr'):
+                model_params['sga_time_rr'] = self.config.sga_time_rr
+            if hasattr(self.config, 'sga_feat_rr'):
+                model_params['sga_feat_rr'] = self.config.sga_feat_rr
+            if hasattr(self.config, 'sga_dropout'):
+                model_params['sga_dropout'] = self.config.sga_dropout
+            if hasattr(self.config, 'sga_fuse'):
+                model_params['sga_fuse'] = self.config.sga_fuse
         
         # Save checkpoint
         self.experiment_manager.save_checkpoint(
