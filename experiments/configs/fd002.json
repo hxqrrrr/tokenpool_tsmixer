@@ -12,14 +12,14 @@
   },
   
   "model_params": {
-    "num_tokens": 500,
-    "token_dim": 96,
-    "num_heads": 3,
+    "num_tokens": 18,
+    "token_dim": 88,
+    "num_heads": 4,
     "temperature": 1.6,
     "attn_dropout": 0.15,
     "use_pos_encoding": true,
-    "hidden_dim": 64,
-    "num_blocks": 4,
+    "hidden_dim": 96,
+    "num_blocks": 3,
     "dropout": 0.15
   },
   

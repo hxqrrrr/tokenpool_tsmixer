@@ -89,11 +89,10 @@ def plot_numtoken_vs_score(csv_path, output_dir='experiments/analysis', dpi=300)
     ax1.grid(True, alpha=0.25, linestyle=':', linewidth=0.8)
     ax1.legend(loc='upper right', fontsize=9, framealpha=0.95, edgecolor='gray')
     
-    # 调整y轴范围
-    y_min = df['Score'].min()
+    # 调整y轴范围（下限固定为500）
     y_max = df['Score'].max()
-    y_margin = (y_max - y_min) * 0.1
-    ax1.set_ylim(y_min - y_margin, y_max + y_margin)
+    y_margin = (y_max - 500) * 0.1
+    ax1.set_ylim(500, y_max + y_margin)
     
     # ========== 子图2: Num Tokens vs RMSE ==========
     best_rmse_idx = df['RMSE'].idxmin()
@@ -133,12 +132,12 @@ def plot_numtoken_vs_score(csv_path, output_dir='experiments/analysis', dpi=300)
     ax2.grid(True, alpha=0.25, linestyle=':', linewidth=0.8)
     ax2.legend(loc='upper right', fontsize=9, framealpha=0.95, edgecolor='gray')
     
-    # 设置x轴为对数刻度（因为范围很大：1-300）
+    # 设置x轴为对数刻度（因为范围较大：1-120）
     ax2.set_xscale('log')
     ax1.set_xscale('log')
     
-    # 设置主要刻度
-    major_ticks = [1, 2, 4, 6, 10, 20, 40, 60, 100, 200, 300]
+    # 设置主要刻度（适配1-120范围）
+    major_ticks = [1, 2, 4, 6, 10, 20, 40, 60, 100, 120]
     ax2.set_xticks(major_ticks)
     ax2.set_xticklabels([str(x) for x in major_ticks])
     
@@ -205,16 +204,16 @@ def plot_numtoken_vs_score(csv_path, output_dir='experiments/analysis', dpi=300)
     ax.grid(True, alpha=0.25, linestyle=':', linewidth=0.8)
     ax.legend(loc='upper right', fontsize=10, framealpha=0.95, edgecolor='gray')
     
-    # 对数刻度
+    # 对数刻度（适配1-120范围）
     ax.set_xscale('log')
+    major_ticks = [1, 2, 4, 6, 10, 20, 40, 60, 100, 120]
     ax.set_xticks(major_ticks)
     ax.set_xticklabels([str(x) for x in major_ticks])
     
-    # 调整y轴范围（只显示有数据的区域）
-    y_min = df['Score'].min()
+    # 调整y轴范围（下限固定为500）
     y_max = df['Score'].max()
-    y_margin = (y_max - y_min) * 0.1  # 10%边距
-    ax.set_ylim(y_min - y_margin, y_max + y_margin)
+    y_margin = (y_max - 500) * 0.1  # 10%边距
+    ax.set_ylim(500, y_max + y_margin)
     
     plt.tight_layout(pad=0.5)
     
