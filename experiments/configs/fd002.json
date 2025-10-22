@@ -1,8 +1,8 @@
 {
-  "experiment_name": "baseline_fd002",
+  "experiment_name": "optimal_fd002",
   "dataset_name": "FD002",
-  "description": "Baseline experiment for FD002 dataset (6 operating conditions)",
-   "seed": 42,
+  "description": "Optimized configuration for FD002 (Score: 522.07, RMSE: 12.24)",
+  "seed": 42,
   
   "data_params": {
     "window_sample": 55,
@@ -12,7 +12,7 @@
   },
   
   "model_params": {
-    "num_tokens": 18,
+    "num_tokens": 16,
     "token_dim": 88,
     "num_heads": 4,
     "temperature": 1.6,
@@ -29,7 +29,7 @@
     "lr": 0.0008,
     "weight_decay": 2e-5,
     "lr_scheduler": true,
-    "patience": 10,
+    "patience": 15,
     "lr_decay_factor": 0.5,
     "lr_patience": 5
   },
