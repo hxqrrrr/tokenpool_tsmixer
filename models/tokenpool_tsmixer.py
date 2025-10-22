@@ -315,10 +315,19 @@ class TokenPoolTSMixerRUL(BaseRULModel):
                  dropout=0.1):
         super(TokenPoolTSMixerRUL, self).__init__()
         
+        # 保存所有初始化参数为实例属性（用于checkpoint保存）
         self.patch_size = patch_size
         self.time_denpen_len = time_denpen_len
         self.num_sensor = num_sensor
         self.num_tokens = num_tokens
+        self.token_dim = token_dim
+        self.num_heads = num_heads
+        self.temperature = temperature
+        self.attn_dropout = attn_dropout
+        self.use_pos_encoding = use_pos_encoding
+        self.hidden_dim = hidden_dim
+        self.num_blocks = num_blocks
+        self.dropout = dropout
         
         # TokenPool: 序列压缩 [B, T, C] -> [B, N, D]
         self.token_pool = TokenPoolA(

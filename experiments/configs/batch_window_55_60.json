@@ -1,0 +1,89 @@
+{
+  "batch_name": "window_comparison_55_60",
+  "description": "Compare window size 55 vs 60 for FD002",
+  
+  "experiments": [
+    {
+      "experiment_name": "window_55",
+      "dataset_name": "FD002",
+      "seed": 42,
+      
+      "data_params": {
+        "window_sample": 55,
+        "patch_size": 5,
+        "time_denpen_len": 11,
+        "max_rul": 125
+      },
+      
+      "model_params": {
+        "num_tokens": 18,
+        "token_dim": 96,
+        "num_heads": 3,
+        "temperature": 1.6,
+        "attn_dropout": 0.15,
+        "use_pos_encoding": true,
+        "hidden_dim": 64,
+        "num_blocks": 4,
+        "dropout": 0.15
+      },
+      
+      "training_params": {
+        "epochs": 50,
+        "batch_size": 128,
+        "lr": 0.0008,
+        "weight_decay": 2e-5,
+        "lr_scheduler": true,
+        "patience": 10,
+        "lr_decay_factor": 0.5,
+        "lr_patience": 5
+      },
+      
+      "output": {
+        "save_checkpoint": true,
+        "save_predictions": true,
+        "save_attention_weights": false
+      }
+    },
+    {
+      "experiment_name": "window_60",
+      "dataset_name": "FD002",
+      "seed": 42,
+      
+      "data_params": {
+        "window_sample": 60,
+        "patch_size": 5,
+        "time_denpen_len": 12,
+        "max_rul": 125
+      },
+      
+      "model_params": {
+        "num_tokens": 18,
+        "token_dim": 96,
+        "num_heads": 3,
+        "temperature": 1.6,
+        "attn_dropout": 0.15,
+        "use_pos_encoding": true,
+        "hidden_dim": 64,
+        "num_blocks": 4,
+        "dropout": 0.15
+      },
+      
+      "training_params": {
+        "epochs": 50,
+        "batch_size": 128,
+        "lr": 0.0008,
+        "weight_decay": 2e-5,
+        "lr_scheduler": true,
+        "patience": 10,
+        "lr_decay_factor": 0.5,
+        "lr_patience": 5
+      },
+      
+      "output": {
+        "save_checkpoint": true,
+        "save_predictions": true,
+        "save_attention_weights": false
+      }
+    }
+  ]
+}
