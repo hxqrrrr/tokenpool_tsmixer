@@ -89,6 +89,12 @@ def plot_numtoken_vs_score(csv_path, output_dir='experiments/analysis', dpi=300)
     ax1.grid(True, alpha=0.25, linestyle=':', linewidth=0.8)
     ax1.legend(loc='upper right', fontsize=9, framealpha=0.95, edgecolor='gray')
     
+    # 调整y轴范围
+    y_min = df['Score'].min()
+    y_max = df['Score'].max()
+    y_margin = (y_max - y_min) * 0.1
+    ax1.set_ylim(y_min - y_margin, y_max + y_margin)
+    
     # ========== 子图2: Num Tokens vs RMSE ==========
     best_rmse_idx = df['RMSE'].idxmin()
     best_rmse_numtoken = df.loc[best_rmse_idx, 'Num_Tokens']
@@ -203,6 +209,12 @@ def plot_numtoken_vs_score(csv_path, output_dir='experiments/analysis', dpi=300)
     ax.set_xscale('log')
     ax.set_xticks(major_ticks)
     ax.set_xticklabels([str(x) for x in major_ticks])
+    
+    # 调整y轴范围（只显示有数据的区域）
+    y_min = df['Score'].min()
+    y_max = df['Score'].max()
+    y_margin = (y_max - y_min) * 0.1  # 10%边距
+    ax.set_ylim(y_min - y_margin, y_max + y_margin)
     
     plt.tight_layout(pad=0.5)
     
