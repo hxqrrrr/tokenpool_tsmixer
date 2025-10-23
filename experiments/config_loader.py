@@ -35,9 +35,32 @@ def load_experiment_config(config_path: str) -> Dict[str, Any]:
     return config
 
 
+def deep_merge(base: dict, override: dict) -> dict:
+    """
+    Deep merge two dictionaries recursively
+    
+    Args:
+        base: Base dictionary
+        override: Dictionary with values to override/merge
+        
+    Returns:
+        Merged dictionary
+    """
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            # Recursively merge nested dictionaries
+            result[key] = deep_merge(result[key], value)
+        else:
+            # Override value
+            result[key] = value
+    return result
+
+
 def load_batch_configs(batch_config_path: str) -> List[Dict[str, Any]]:
     """
     Load batch experiment configurations from JSON file
+    Supports both 'base_config' (deep merge) and 'global_settings' (shallow merge) formats
     
     Args:
         batch_config_path: Path to batch JSON configuration file
@@ -58,16 +81,30 @@ def load_batch_configs(batch_config_path: str) -> List[Dict[str, Any]]:
     
     experiments = batch_config['experiments']
     
-    # Apply global settings if present
-    if 'global_settings' in batch_config:
+    # Support two configuration formats
+    if 'base_config' in batch_config:
+        # Format 1: base_config with deep merge
+        base_config = batch_config['base_config']
+        merged_experiments = []
+        for exp in experiments:
+            # Deep merge: recursively merge nested dictionaries
+            merged_exp = deep_merge(base_config, exp)
+            merged_experiments.append(merged_exp)
+        return merged_experiments
+    
+    elif 'global_settings' in batch_config:
+        # Format 2: global_settings with shallow merge (backward compatible)
         global_settings = batch_config['global_settings']
         for exp in experiments:
-            # Merge global settings (experiment-specific settings take precedence)
+            # Shallow merge: only add missing top-level keys
             for key, value in global_settings.items():
                 if key not in exp:
                     exp[key] = value
+        return experiments
     
-    return experiments
+    else:
+        # No base config or global settings, return experiments as-is
+        return experiments
 
 
 def save_experiment_config(config: Dict[str, Any], output_path: str):

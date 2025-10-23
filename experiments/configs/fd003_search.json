@@ -1,0 +1,129 @@
+{
+  "description": "FD003 Parameter Search - Based on FD001 optimal configuration",
+  "base_config": {
+    "dataset_name": "FD003",
+    "seed": 42,
+    "data_params": {
+      "patch_size": 5,
+      "max_rul": 125
+    },
+    "model_params": {
+      "num_heads": 4,
+      "temperature": 1.5,
+      "attn_dropout": 0.1,
+      "use_pos_encoding": true,
+      "dropout": 0.1,
+      "num_blocks": 3
+    },
+    "training_params": {
+      "epochs": 50,
+      "batch_size": 128,
+      "lr": 0.0008,
+      "weight_decay": 2e-5,
+      "lr_scheduler": true,
+      "patience": 15,
+      "lr_decay_factor": 0.5,
+      "lr_patience": 5
+    },
+    "output": {
+      "save_checkpoint": true,
+      "save_predictions": true,
+      "save_attention_weights": false
+    }
+  },
+  
+  "experiments": [
+    {
+      "experiment_name": "fd003_w25_t12_tdim112",
+      "description": "FD001最优配置迁移: Window=25, Tokens=12, TokenDim=112",
+      "data_params": {
+        "window_sample": 25,
+        "time_denpen_len": 5
+      },
+      "model_params": {
+        "num_tokens": 12,
+        "token_dim": 112,
+        "hidden_dim": 96
+      }
+    },
+    {
+      "experiment_name": "fd003_w30_t12_tdim112",
+      "description": "Window=30, Tokens=12, TokenDim=112",
+      "data_params": {
+        "window_sample": 30,
+        "time_denpen_len": 6
+      },
+      "model_params": {
+        "num_tokens": 12,
+        "token_dim": 112,
+        "hidden_dim": 96
+      }
+    },
+    {
+      "experiment_name": "fd003_w25_t14_tdim112",
+      "description": "Window=25, Tokens=14 (增加token容量)",
+      "data_params": {
+        "window_sample": 25,
+        "time_denpen_len": 5
+      },
+      "model_params": {
+        "num_tokens": 14,
+        "token_dim": 112,
+        "hidden_dim": 96
+      }
+    },
+    {
+      "experiment_name": "fd003_w25_t12_tdim128",
+      "description": "Window=25, Tokens=12, TokenDim=128 (增加维度)",
+      "data_params": {
+        "window_sample": 25,
+        "time_denpen_len": 5
+      },
+      "model_params": {
+        "num_tokens": 12,
+        "token_dim": 128,
+        "hidden_dim": 96
+      }
+    },
+    {
+      "experiment_name": "fd003_w30_t14_tdim112",
+      "description": "Window=30, Tokens=14, TokenDim=112",
+      "data_params": {
+        "window_sample": 30,
+        "time_denpen_len": 6
+      },
+      "model_params": {
+        "num_tokens": 14,
+        "token_dim": 112,
+        "hidden_dim": 96
+      }
+    },
+    {
+      "experiment_name": "fd003_w25_t16_tdim112",
+      "description": "Window=25, Tokens=16 (更多token)",
+      "data_params": {
+        "window_sample": 25,
+        "time_denpen_len": 5
+      },
+      "model_params": {
+        "num_tokens": 16,
+        "token_dim": 112,
+        "hidden_dim": 96
+      }
+    },
+    {
+      "experiment_name": "fd003_w30_t16_tdim128",
+      "description": "Window=30, Tokens=16, TokenDim=128 (大容量配置)",
+      "data_params": {
+        "window_sample": 30,
+        "time_denpen_len": 6
+      },
+      "model_params": {
+        "num_tokens": 16,
+        "token_dim": 128,
+        "hidden_dim": 96
+      }
+    }
+  ]
+}
+

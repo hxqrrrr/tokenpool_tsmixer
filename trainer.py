@@ -257,7 +257,7 @@ class RULTrainer:
                 
                 # Early stopping check
                 if no_improve_count >= early_stop_patience:
-                    print(f"\n⚠ Early stopping at epoch {epoch}")
+                    print(f"\n[EARLY STOP] Early stopping at epoch {epoch}")
                     print(f"  No improvement in test score for {early_stop_patience} epochs")
                     print(f"  Best score: {self.history['best_test_score']:.2f} at epoch {self.history['best_epoch_score']}")
                     if self.logger:
@@ -290,7 +290,7 @@ class RULTrainer:
         if hasattr(self, 'best_model_state'):
             self.model.load_state_dict(self.best_model_state['model_state_dict'])
             self.model.eval()  # 重新设置为eval模式
-            print(f"\n✓ Loaded best model from epoch {self.best_model_state['epoch']}")
+            print(f"\n[OK] Loaded best model from epoch {self.best_model_state['epoch']}")
             if self.logger:
                 self.logger.info(f"已加载 epoch {self.best_model_state['epoch']} 的最佳模型")
             # 直接使用保存的测试结果（更可靠）

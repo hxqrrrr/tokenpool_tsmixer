@@ -1,0 +1,43 @@
+{
+  "experiment_name": "optimal_fd001",
+  "dataset_name": "FD001",
+  "description": "Optimal configuration for FD001 - Best Score: 168.46, RMSE: 11.82 (from batch experiments)",
+  "seed": 422,
+  
+  "data_params": {
+    "window_sample": 25,
+    "patch_size": 5,
+    "time_denpen_len": 5,
+    "max_rul": 125
+  },
+  
+  "model_params": {
+    "num_tokens": 12,
+    "token_dim": 112,
+    "num_heads": 4,
+    "temperature": 1.5,
+    "attn_dropout": 0.1,
+    "use_pos_encoding": true,
+    "hidden_dim": 96,
+    "num_blocks": 3,
+    "dropout": 0.1
+  },
+  
+  "training_params": {
+    "epochs": 50,
+    "batch_size": 128,
+    "lr": 0.0008,
+    "weight_decay": 2e-5,
+    "lr_scheduler": true,
+    "patience": 15,
+    "lr_decay_factor": 0.5,
+    "lr_patience": 5
+  },
+  
+  "output": {
+    "save_checkpoint": true,
+    "save_predictions": true,
+    "save_attention_weights": false
+  }
+}
+

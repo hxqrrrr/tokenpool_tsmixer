@@ -4,6 +4,10 @@ Supports single and batch experiments with JSON configuration
 """
 import argparse
 import sys
+import subprocess
+import json
+import time
+from datetime import datetime
 import torch
 import random
 import numpy as np
@@ -128,8 +132,8 @@ def run_single_experiment(config: dict):
         print(f"[MODEL] Model created:")
         print(f"  - Total parameters: {total_params:,}")
         print(f"  - Trainable parameters: {trainable_params:,}")
-        print(f"  - TokenPool: {data_params.get('window_sample', 30)} steps → {model_params.get('num_tokens', 10)} tokens")
-        print(f"  - Compression ratio: {data_params.get('window_sample', 30) / model_params.get('num_tokens', 10):.1f}×")
+        print(f"  - TokenPool: {data_params.get('window_sample', 30)} steps -> {model_params.get('num_tokens', 10)} tokens")
+        print(f"  - Compression ratio: {data_params.get('window_sample', 30) / model_params.get('num_tokens', 10):.1f}x")
         
         # Create training configuration
         train_config = {
@@ -201,7 +205,8 @@ def run_single_experiment(config: dict):
 
 def run_batch_experiments(batch_config_path: str):
     """
-    Run batch experiments from JSON configuration
+    Run batch experiments from JSON configuration using subprocess
+    Supports both 'base_config' and 'global_settings' formats
     
     Args:
         batch_config_path: Path to batch configuration JSON file
@@ -213,51 +218,183 @@ def run_batch_experiments(batch_config_path: str):
     # Load batch configuration
     experiments = load_batch_configs(batch_config_path)
     
-    print(f"[BATCH] Found {len(experiments)} experiments to run\n")
+    print(f"[BATCH] Found {len(experiments)} experiments to run")
+    print(f"[BATCH] Each experiment runs in an isolated subprocess")
+    print(f"{'='*80}\n")
     
     # Run each experiment
     all_results = []
     
     for i, exp_config in enumerate(experiments, 1):
+        exp_name = exp_config.get('experiment_name', f'exp_{i}')
+        exp_desc = exp_config.get('description', '')
+        
         print(f"\n{'#'*80}")
-        print(f"# BATCH EXPERIMENT {i}/{len(experiments)}: {exp_config['experiment_name']}")
+        print(f"# EXPERIMENT {i}/{len(experiments)}: {exp_name}")
+        if exp_desc:
+            print(f"# {exp_desc}")
         print(f"{'#'*80}\n")
         
+        # Create temporary configuration file with timestamp to avoid conflicts
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        temp_config_path = f"temp_{exp_name}_{timestamp}.json"
+        
         try:
-            results = run_single_experiment(exp_config)
-            all_results.append({
-                'experiment_name': exp_config['experiment_name'],
-                'status': 'completed',
-                **results
-            })
+            # Save experiment config to temp file
+            with open(temp_config_path, 'w', encoding='utf-8') as f:
+                json.dump(exp_config, f, indent=2, ensure_ascii=False)
+            
+            # Run experiment in subprocess
+            start_time = time.time()
+            result = subprocess.run(
+                ['python', 'main.py', '--config', temp_config_path],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace'  # Handle encoding errors gracefully
+            )
+            duration = time.time() - start_time
+            
+            # Parse results from output
+            if result.returncode == 0:
+                print(f"\n[SUCCESS] Experiment completed successfully!")
+                print(f"   Duration: {duration:.1f}s")
+                
+                # Extract metrics from stdout
+                output_lines = result.stdout.split('\n') if result.stdout else []
+                rmse, score = None, None
+                
+                for line in output_lines:
+                    if 'Test RMSE:' in line or 'RMSE:' in line:
+                        try:
+                            # Try to extract numeric value
+                            parts = line.split('RMSE:')
+                            if len(parts) > 1:
+                                rmse = float(parts[1].split()[0].strip(','))
+                        except (ValueError, IndexError):
+                            pass
+                    
+                    if 'Test Score:' in line or 'Score:' in line:
+                        try:
+                            parts = line.split('Score:')
+                            if len(parts) > 1:
+                                score = float(parts[1].split()[0].strip(','))
+                        except (ValueError, IndexError):
+                            pass
+                
+                all_results.append({
+                    'experiment_name': exp_name,
+                    'status': 'success',
+                    'rmse': rmse,
+                    'score': score,
+                    'duration': duration
+                })
+                
+                if rmse is not None and score is not None:
+                    print(f"   RMSE: {rmse:.4f}")
+                    print(f"   Score: {score:.2f}")
+                else:
+                    print(f"   (Could not extract metrics from output)")
+            
+            else:
+                print(f"\n[FAILED] Experiment failed!")
+                stderr_text = result.stderr if result.stderr else "No error message available"
+                
+                # Try to extract the actual error from the end of stderr (skip warnings)
+                error_lines = stderr_text.split('\n') if stderr_text else []
+                # Look for actual error messages (typically at the end)
+                actual_error_lines = []
+                for line in reversed(error_lines):
+                    if line.strip():
+                        actual_error_lines.insert(0, line)
+                        if len(actual_error_lines) >= 10:  # Get last 10 non-empty lines
+                            break
+                
+                error_summary = '\n'.join(actual_error_lines[-10:]) if actual_error_lines else stderr_text[:500]
+                
+                print(f"   Error output (last lines):")
+                for line in error_summary.split('\n')[:5]:  # Show first 5 lines of error
+                    print(f"   {line}")
+                if len(error_summary.split('\n')) > 5:
+                    print(f"   ... (see full error in results JSON)")
+                
+                all_results.append({
+                    'experiment_name': exp_name,
+                    'status': 'failed',
+                    'error': error_summary[:1000] if error_summary else "Unknown error",
+                    'duration': duration,
+                    'return_code': result.returncode
+                })
+        
         except Exception as e:
-            print(f"\n[ERROR] Experiment {exp_config['experiment_name']} failed: {str(e)}")
+            print(f"\n[ERROR] Experiment exception: {str(e)}")
             all_results.append({
-                'experiment_name': exp_config['experiment_name'],
-                'status': 'failed',
+                'experiment_name': exp_name,
+                'status': 'error',
                 'error': str(e)
             })
+        
+        finally:
+            # Clean up temporary config file
+            try:
+                Path(temp_config_path).unlink(missing_ok=True)
+            except Exception:
+                pass
     
     # Print summary
     print(f"\n{'='*80}")
-    print(f"[BATCH] Batch experiments completed")
+    print(f"[BATCH] All experiments completed")
     print(f"{'='*80}\n")
     
+    # Results table
     print(f"{'='*80}")
-    print(f"SUMMARY OF ALL EXPERIMENTS")
+    print(f"EXPERIMENT RESULTS SUMMARY")
     print(f"{'='*80}")
+    print(f"{'Experiment':<35} {'Status':<10} {'RMSE':<12} {'Score':<12}")
+    print(f"{'-'*80}")
+    
+    successful = [r for r in all_results if r['status'] == 'success']
     
     for result in all_results:
-        print(f"\n{result['experiment_name']}:")
-        if result['status'] == 'completed':
-            print(f"  Status: ✓ Completed")
-            print(f"  RMSE: {result.get('rmse', 'N/A'):.4f}")
-            print(f"  Score: {result.get('score', 'N/A'):.2f}")
-        else:
-            print(f"  Status: ✗ Failed")
-            print(f"  Error: {result.get('error', 'Unknown')}")
+        status_icon = '[OK]' if result['status'] == 'success' else '[FAIL]'
+        rmse_str = f"{result['rmse']:.4f}" if result.get('rmse') is not None else 'N/A'
+        score_str = f"{result['score']:.2f}" if result.get('score') is not None else 'N/A'
+        print(f"{result['experiment_name']:<35} {status_icon:<10} {rmse_str:<12} {score_str:<12}")
     
-    print(f"\n{'='*80}\n")
+    print(f"{'-'*80}")
+    print(f"Success rate: {len(successful)}/{len(all_results)}")
+    
+    # Find best results
+    if successful:
+        print(f"\n{'='*80}")
+        print(f"BEST RESULTS")
+        print(f"{'='*80}")
+        
+        valid_rmse = [r for r in successful if r.get('rmse') is not None]
+        valid_score = [r for r in successful if r.get('score') is not None]
+        
+        if valid_rmse:
+            best_rmse = min(valid_rmse, key=lambda x: x['rmse'])
+            print(f"Best RMSE: {best_rmse['rmse']:.4f} ({best_rmse['experiment_name']})")
+        
+        if valid_score:
+            best_score = min(valid_score, key=lambda x: x['score'])
+            print(f"Best Score: {best_score['score']:.2f} ({best_score['experiment_name']})")
+    
+    # Save results to JSON file
+    results_filename = f"batch_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(results_filename, 'w', encoding='utf-8') as f:
+        json.dump({
+            'batch_config': batch_config_path,
+            'timestamp': datetime.now().isoformat(),
+            'total_experiments': len(all_results),
+            'successful': len(successful),
+            'results': all_results
+        }, f, indent=2, ensure_ascii=False)
+    
+    print(f"\n{'='*80}")
+    print(f"Results saved to: {results_filename}")
+    print(f"{'='*80}\n")
 
 
 def main():

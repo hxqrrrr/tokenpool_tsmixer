@@ -1,0 +1,42 @@
+{
+  "experiment_name": "fd003_best",
+  "description": "FD003 Best Configuration - Window=60, Tokens=14, TokenDim=112, Expected RMSE~10.71",
+  "dataset_name": "FD003",
+  "seed": 42,
+  
+  "data_params": {
+    "window_sample": 60,
+    "patch_size": 5,
+    "time_denpen_len": 12,
+    "max_rul": 125
+  },
+  
+  "model_params": {
+    "num_tokens": 14,
+    "token_dim": 112,
+    "hidden_dim": 96,
+    "num_heads": 4,
+    "temperature": 1.5,
+    "attn_dropout": 0.1,
+    "use_pos_encoding": true,
+    "dropout": 0.1,
+    "num_blocks": 3
+  },
+  
+  "training_params": {
+    "epochs": 50,
+    "batch_size": 128,
+    "lr": 0.0008,
+    "weight_decay": 2e-5,
+    "lr_scheduler": true,
+    "patience": 15,
+    "lr_decay_factor": 0.5,
+    "lr_patience": 5
+  },
+  
+  "output": {
+    "save_checkpoint": true,
+    "save_predictions": true,
+    "save_attention_weights": false
+  }
+}

@@ -214,7 +214,7 @@ def main():
         n_bins=args.bins
     )
     
-    print(f"\n✓ 完成！")
+    print(f"\n[OK] 完成！")
 
 
 if __name__ == '__main__':
