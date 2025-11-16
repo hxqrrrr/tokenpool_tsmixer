@@ -54,7 +54,11 @@ class CMAPSSDataset:
         
     def _load_data(self):
         """Load raw data files"""
-        data_dir = os.path.join(self.data_root, 'CMAPSSData')
+        # If data_root already contains 'CMAPSSData', use it directly
+        if 'CMAPSSData' in self.data_root:
+            data_dir = self.data_root
+        else:
+            data_dir = os.path.join(self.data_root, 'CMAPSSData')
         
         # Load training data
         train_path = os.path.join(data_dir, f'train_{self.dataset_name}.txt')
@@ -115,11 +119,11 @@ class CMAPSSDataset:
         self._normalize_data()
         
         # Generate sequences
-        self.train_x, self.train_ops, self.train_y = self._generate_sequences(
+        self.train_x, self.train_ops, self.train_y, self.train_engine_ids = self._generate_sequences(
             self.train_normalized, self.train_setting, train_y, self.train_df, is_train=True
         )
         
-        self.test_x, self.test_ops, self.test_y = self._generate_test_sequences(
+        self.test_x, self.test_ops, self.test_y, self.test_engine_ids = self._generate_test_sequences(
             self.test_normalized, self.test_setting, test_y, self.test_df
         )
         
@@ -178,6 +182,7 @@ class CMAPSSDataset:
         seq_gen_x = []
         seq_gen_ops = []
         seq_gen_y = []
+        seq_gen_engine_ids = []  # 新增：保存每个样本对应的engine_id
         
         start_index = 0
         for engine_id in engine_ids:
@@ -208,14 +213,18 @@ class CMAPSSDataset:
             ))
             seq_gen_y.extend(label_seq)
             
+            # 保存engine_id（为每个生成的样本重复engine_id）
+            seq_gen_engine_ids.extend([engine_id] * len(sensor_seq))
+            
             start_index = end_index
         
         # Apply patch sampling
         x_data = self._data_sampling(np.array(seq_gen_x), self.seq_len, self.time_denpen_len)
         ops_data = self._data_sampling(np.array(seq_gen_ops), self.seq_len, self.time_denpen_len)
         y_data = np.array(seq_gen_y) / self.max_rul  # Normalize labels
+        engine_ids_data = np.array(seq_gen_engine_ids)  # Engine IDs for each sample
         
-        return x_data, ops_data, y_data
+        return x_data, ops_data, y_data, engine_ids_data
     
     def _generate_test_sequences(self, sensor_data, setting_data, labels, metadata):
         """Generate test sequences (only last window per engine)"""
@@ -224,6 +233,7 @@ class CMAPSSDataset:
         seq_gen_x = []
         seq_gen_ops = []
         seq_gen_y = []
+        seq_gen_engine_ids = []  # 新增：保存每个样本对应的engine_id
         
         start_index = 0
         for engine_id in engine_ids:
@@ -263,14 +273,18 @@ class CMAPSSDataset:
             # Get last label
             seq_gen_y.append(labels.iloc[end_index - 1, 0])
             
+            # 保存engine_id（测试集每个引擎只有一个样本）
+            seq_gen_engine_ids.append(engine_id)
+            
             start_index = end_index
         
         # Apply patch sampling
         x_data = self._data_sampling(np.array(seq_gen_x), self.seq_len, self.time_denpen_len)
         ops_data = self._data_sampling(np.array(seq_gen_ops), self.seq_len, self.time_denpen_len)
         y_data = np.array(seq_gen_y) / self.max_rul  # Normalize labels
+        engine_ids_data = np.array(seq_gen_engine_ids)  # Engine IDs for each sample
         
-        return x_data, ops_data, y_data
+        return x_data, ops_data, y_data, engine_ids_data
     
     def _gen_sequence(self, df, seq_length, cols):
         """Generate sliding window sequences"""
@@ -322,10 +336,12 @@ class CMAPSSDataset:
     
     def get_val_data(self):
         """Get validation data"""
+        val_engine_ids = self.train_engine_ids[self.val_indices] if hasattr(self, 'train_engine_ids') else None
         return {
             'x': self.train_x[self.val_indices],
             'ops': self.train_ops[self.val_indices],
-            'y': self.train_y[self.val_indices]
+            'y': self.train_y[self.val_indices],
+            'engine_id': val_engine_ids
         }
     
     def get_test_data(self):

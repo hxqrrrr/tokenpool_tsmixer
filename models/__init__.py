@@ -1,11 +1,8 @@
-"""Models module for RUL prediction"""
+"""
+Models module for RUL prediction
+Only PhasePoolTokenMixer model is maintained in this framework
+"""
 from .base_model import BaseRULModel
-from .tsmixer import TSMixer, TSMixerRUL
-from .tsmixer_sga import TSMixerSGARUL
-from .stgnn_rul import STGNNRUL
-from .tokenpool_tsmixer import TokenPoolTSMixerRUL
-from .multiscale_tokenpool_tsmixer import MultiScaleTokenPoolTSMixerRUL
+from .phasepool_tokenmixer import PhasePoolTokenMixerRUL
 
-__all__ = ['BaseRULModel', 'TSMixer', 'TSMixerRUL', 'TSMixerSGARUL', 'STGNNRUL', 
-           'TokenPoolTSMixerRUL', 'MultiScaleTokenPoolTSMixerRUL']
-
+__all__ = ['BaseRULModel', 'PhasePoolTokenMixerRUL']

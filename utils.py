@@ -1,11 +1,113 @@
 """
-训练日志工具
+Utility functions for RUL prediction
+包含评估指标和日志工具
 """
+import torch
+import numpy as np
+import random
 import logging
 import os
 import sys
 from datetime import datetime
 
+
+# ==================== Evaluation Metrics ====================
+
+def scoring_function(predicted, real, max_rul):
+    """
+    Asymmetric scoring function for RUL prediction
+    Penalizes late predictions more heavily than early predictions
+    
+    Args:
+        predicted: Predicted RUL values (normalized)
+        real: True RUL values (normalized)
+        max_rul: Maximum RUL value for denormalization
+        
+    Returns:
+        Total score
+    """
+    score = 0
+    num = predicted.size(0)
+    
+    for i in range(num):
+        pred_denorm = predicted[i] * max_rul
+        real_denorm = real[i] * max_rul
+        
+        if real_denorm > pred_denorm:
+            # Late prediction (more dangerous)
+            score = score + (torch.exp((real_denorm - pred_denorm) / 13) - 1)
+        else:
+            # Early prediction (less dangerous)
+            score = score + (torch.exp((pred_denorm - real_denorm) / 10) - 1)
+    
+    return score
+
+
+def calculate_rmse(predicted, real, max_rul):
+    """
+    Calculate Root Mean Square Error
+    
+    Args:
+        predicted: Predicted RUL values (normalized)
+        real: True RUL values (normalized)
+        max_rul: Maximum RUL value for denormalization
+        
+    Returns:
+        RMSE value
+    """
+    mse = torch.mean((predicted - real) ** 2)
+    rmse = torch.sqrt(mse) * max_rul
+    return rmse
+
+
+def phm_score(predicted, real):
+    """
+    PHM08 Challenge scoring function (for numpy arrays)
+    
+    Args:
+        predicted: Predicted RUL values (denormalized)
+        real: True RUL values (denormalized)
+        
+    Returns:
+        Total score
+    """
+    predicted = np.array(predicted).flatten()
+    real = np.array(real).flatten()
+    
+    diff = real - predicted
+    score = 0
+    
+    for d in diff:
+        if d < 0:
+            # Late prediction (more dangerous)
+            score += np.exp(-d / 13) - 1
+        else:
+            # Early prediction (less dangerous)
+            score += np.exp(d / 10) - 1
+    
+    return score
+
+
+# ==================== Random Seed ====================
+
+def set_seed(seed=42):
+    """
+    Set random seed for reproducibility
+    
+    Args:
+        seed: Random seed value
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+# ==================== Logging Utilities ====================
 
 def setup_logger(log_dir='./logs', model_name='model', dataset_name='dataset'):
     """
@@ -130,4 +232,20 @@ def log_final_results(logger, rmse, score):
     logger.info(f"  RMSE: {rmse:.4f}")
     logger.info(f"  Score: {score:.2f}")
     logger.info("="*80)
+
+
+# 导出所有公共函数
+__all__ = [
+    'scoring_function',
+    'calculate_rmse',
+    'phm_score',
+    'set_seed',
+    'setup_logger',
+    'log_config',
+    'log_dataset_info',
+    'log_model_info',
+    'log_epoch',
+    'log_training_summary',
+    'log_final_results'
+]
 
