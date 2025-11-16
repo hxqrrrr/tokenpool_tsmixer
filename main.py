@@ -1,5 +1,5 @@
 """
-Main entry point for TokenPool-TSMixer RUL Prediction Experiments
+Main entry point for PhasePool-TokenMixer RUL Prediction Experiments
 Supports single and batch experiments with JSON configuration
 """
 import argparse
@@ -14,7 +14,7 @@ import numpy as np
 from pathlib import Path
 
 from dataset import CMAPSSDataset
-from models.tokenpool_tsmixer import TokenPoolTSMixerRUL
+from models.phasepool_tokenmixer import PhasePoolTokenMixerRUL
 from trainer import RULTrainer
 from experiments import ExperimentManager, load_experiment_config, load_batch_configs
 
@@ -107,22 +107,29 @@ def run_single_experiment(config: dict):
         print(f"  - Sequence shape: [{data_params.get('time_denpen_len', 6)}, {data_params.get('patch_size', 5)}, 14]")
         
         # Create model
-        print(f"\n[MODEL] Creating TokenPool-TSMixer...")
-        model = TokenPoolTSMixerRUL(
+        print(f"\n[MODEL] Creating PhasePool-TokenMixer...")
+        model = PhasePoolTokenMixerRUL(
             patch_size=data_params.get('patch_size', 5),
             time_denpen_len=data_params.get('time_denpen_len', 6),
             num_sensor=14,
-            # TokenPool parameters
+            # PhasePool parameters
             num_tokens=model_params.get('num_tokens', 10),
             token_dim=model_params.get('token_dim', 128),
             num_heads=model_params.get('num_heads', 4),
             temperature=model_params.get('temperature', 1.5),
             attn_dropout=model_params.get('attn_dropout', 0.1),
             use_pos_encoding=model_params.get('use_pos_encoding', True),
-            # TSMixer parameters
+            pe_on_input=model_params.get('pe_on_input', True),  # 位置编码是否加在输入上
+            # TokenMixer parameters
             hidden_dim=model_params.get('hidden_dim', 64),
             num_blocks=model_params.get('num_blocks', 4),
-            dropout=model_params.get('dropout', 0.1)
+            dropout=model_params.get('dropout', 0.1),
+            # Ablation parameters
+            use_phasepool=model_params.get('use_phasepool', True),
+            use_self_attention=model_params.get('use_self_attention', False),
+            use_time_mix=model_params.get('use_time_mix', True),
+            use_feature_mix=model_params.get('use_feature_mix', True),
+            use_tokenmixer=model_params.get('use_tokenmixer', True)
         )
         
         # Count parameters
@@ -132,7 +139,7 @@ def run_single_experiment(config: dict):
         print(f"[MODEL] Model created:")
         print(f"  - Total parameters: {total_params:,}")
         print(f"  - Trainable parameters: {trainable_params:,}")
-        print(f"  - TokenPool: {data_params.get('window_sample', 30)} steps -> {model_params.get('num_tokens', 10)} tokens")
+        print(f"  - PhasePool: {data_params.get('window_sample', 30)} steps -> {model_params.get('num_tokens', 10)} tokens")
         print(f"  - Compression ratio: {data_params.get('window_sample', 30) / model_params.get('num_tokens', 10):.1f}x")
         
         # Create training configuration
@@ -400,7 +407,7 @@ def run_batch_experiments(batch_config_path: str):
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
-        description='TokenPool-TSMixer RUL Prediction Experiments',
+        description='PhasePool-TokenMixer RUL Prediction Experiments',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

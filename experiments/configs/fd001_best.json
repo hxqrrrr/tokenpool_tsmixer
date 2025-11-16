@@ -2,7 +2,7 @@
   "experiment_name": "optimal_fd001",
   "dataset_name": "FD001",
   "description": "Optimal configuration for FD001 - Best Score: 168.46, RMSE: 11.82 (from batch experiments)",
-  "seed": 422,
+  "seed": 420,
   
   "data_params": {
     "window_sample": 25,

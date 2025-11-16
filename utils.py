@@ -4,6 +4,7 @@ Utility functions for RUL prediction
 """
 import torch
 import numpy as np
+import random
 import logging
 import os
 import sys
@@ -57,6 +58,53 @@ def calculate_rmse(predicted, real, max_rul):
     mse = torch.mean((predicted - real) ** 2)
     rmse = torch.sqrt(mse) * max_rul
     return rmse
+
+
+def phm_score(predicted, real):
+    """
+    PHM08 Challenge scoring function (for numpy arrays)
+    
+    Args:
+        predicted: Predicted RUL values (denormalized)
+        real: True RUL values (denormalized)
+        
+    Returns:
+        Total score
+    """
+    predicted = np.array(predicted).flatten()
+    real = np.array(real).flatten()
+    
+    diff = real - predicted
+    score = 0
+    
+    for d in diff:
+        if d < 0:
+            # Late prediction (more dangerous)
+            score += np.exp(-d / 13) - 1
+        else:
+            # Early prediction (less dangerous)
+            score += np.exp(d / 10) - 1
+    
+    return score
+
+
+# ==================== Random Seed ====================
+
+def set_seed(seed=42):
+    """
+    Set random seed for reproducibility
+    
+    Args:
+        seed: Random seed value
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 # ==================== Logging Utilities ====================
@@ -190,6 +238,8 @@ def log_final_results(logger, rmse, score):
 __all__ = [
     'scoring_function',
     'calculate_rmse',
+    'phm_score',
+    'set_seed',
     'setup_logger',
     'log_config',
     'log_dataset_info',

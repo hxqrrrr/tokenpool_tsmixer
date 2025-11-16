@@ -1,5 +1,5 @@
 """
-Experiment management module for TokenPool-TSMixer RUL prediction
+Experiment management module for PhasePool-TokenMixer RUL prediction
 """
 
 from .experiment_manager import ExperimentManager

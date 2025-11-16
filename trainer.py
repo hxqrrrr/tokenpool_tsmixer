@@ -361,14 +361,14 @@ class RULTrainer:
     
     def get_attention_weights(self, split='test', num_samples=None):
         """
-        Get attention weights from TokenPool module
+        Get attention weights from PhasePool module
         
         Args:
             split: Dataset split ('train', 'val', or 'test')
             num_samples: Number of samples to get attention for (None for all)
             
         Returns:
-            Attention weights array or None if model doesn't have TokenPool
+            Attention weights array or None if model doesn't have PhasePool
         """
         if not hasattr(self.model, 'last_attn_weights'):
             return None
@@ -447,8 +447,8 @@ class RULTrainer:
         # 从model对象直接读取参数（优先级最高，确保与实际模型一致）
         model_name = self.model.get_model_name()
         
-        if model_name == 'TokenPoolTSMixerRUL':
-            # 直接从model读取TokenPool参数（确保参数完整且正确）
+        if model_name == 'PhasePoolTokenMixerRUL':
+            # 直接从model读取PhasePool参数（确保参数完整且正确）
             model_params['num_tokens'] = self.model.num_tokens
             model_params['token_dim'] = self.model.token_dim
             model_params['num_heads'] = self.model.num_heads
@@ -468,7 +468,7 @@ class RULTrainer:
             if hasattr(self.config, 'dropout'):
                 model_params['dropout'] = self.config.dropout
             
-            # TokenPool-specific parameters
+            # PhasePool-specific parameters
             if hasattr(self.config, 'num_tokens'):
                 model_params['num_tokens'] = self.config.num_tokens
             if hasattr(self.config, 'token_dim'):

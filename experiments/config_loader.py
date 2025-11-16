@@ -130,9 +130,9 @@ def create_config_template(output_path: str = 'experiment_template.json'):
         output_path: Output path for template file
     """
     template = {
-        "experiment_name": "tokenpool_baseline",
+        "experiment_name": "phasepool_baseline",
         "dataset_name": "FD001",
-        "description": "Baseline experiment for TokenPool-TSMixer",
+        "description": "Baseline experiment for PhasePool-TokenMixer",
         
         "data_params": {
             "window_sample": 30,

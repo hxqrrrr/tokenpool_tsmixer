@@ -1,5 +1,5 @@
 """
-Experiment Manager for TokenPool-TSMixer RUL Prediction
+Experiment Manager for PhasePool-TokenMixer RUL Prediction
 Handles experiment tracking, logging, and result management
 """
 import os
