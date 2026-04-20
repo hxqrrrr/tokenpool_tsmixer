@@ -1,0 +1,16 @@
+{
+  "best_rmse": Infinity,
+  "best_params": {
+    "window_sample": 50,
+    "patch_size": 10,
+    "time_denpen_len": 10,
+    "num_tokens": 32,
+    "token_dim": 256,
+    "num_heads": 8,
+    "temperature": 1.4734640489125073,
+    "use_pos_encoding": true,
+    "lr": 0.0013342537879214857,
+    "batch_size": 64,
+    "weight_decay": 2.3048199250501817e-06
+  }
+}

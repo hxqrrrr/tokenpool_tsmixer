@@ -10,6 +10,35 @@ from sklearn.preprocessing import MinMaxScaler
 import torch
 
 
+def get_dataset(dataset_name, data_root, **kwargs):
+    """
+    Factory function to get the appropriate dataset class
+    
+    Args:
+        dataset_name: Dataset name (FD001, FD002, FD003, FD004, or N-CMAPSS dataset names)
+        data_root: Root directory containing data
+        **kwargs: Additional arguments for dataset initialization
+        
+    Returns:
+        Dataset instance
+    """
+    # Check if it's an N-CMAPSS dataset
+    if dataset_name.startswith('N-CMAPSS'):
+        from dataset_ncmapss import NCMAPSSDataset
+        return NCMAPSSDataset(
+            data_root=data_root,
+            dataset_name=dataset_name,
+            **kwargs
+        )
+    else:
+        # CMAPSS datasets (FD001, FD002, FD003, FD004)
+        return CMAPSSDataset(
+            data_root=data_root,
+            dataset_name=dataset_name,
+            **kwargs
+        )
+
+
 class CMAPSSDataset:
     """
     Dataset class for CMAPSS (C-MAPSS) turbofan engine degradation dataset

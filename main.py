@@ -13,7 +13,7 @@ import random
 import numpy as np
 from pathlib import Path
 
-from dataset import CMAPSSDataset
+from dataset import CMAPSSDataset, get_dataset
 from models.phasepool_tokenmixer import PhasePoolTokenMixerRUL
 from trainer import RULTrainer
 from experiments import ExperimentManager, load_experiment_config, load_batch_configs
@@ -85,8 +85,9 @@ def run_single_experiment(config: dict):
         
         # Create dataset
         print(f"\n[DATA] Loading {dataset_name} dataset...")
-        dataset = CMAPSSDataset(
-            data_root='./CMAPSSData',
+        data_root = './NCMAPSSData' if dataset_name.startswith('N-CMAPSS') else './CMAPSSData'
+        dataset = get_dataset(
+            data_root=data_root,
             dataset_name=dataset_name,
             max_rul=data_params.get('max_rul', 125),
             seq_len=data_params.get('patch_size', 5),

@@ -1,0 +1,37 @@
+{
+  "experiment_name": "ncmapss_baseline",
+  "dataset_name": "N-CMAPSS_DS02-006",
+  "description": "PhasePool-TokenMixer on N-CMAPSS dataset",
+  "data_params": {
+    "window_sample": 100,
+    "patch_size": 10,
+    "time_denpen_len": 6,
+    "max_rul": 125
+  },
+  "model_params": {
+    "num_tokens": 20,
+    "token_dim": 128,
+    "num_heads": 4,
+    "temperature": 1.5,
+    "attn_dropout": 0.2,
+    "use_pos_encoding": true,
+    "hidden_dim": 128,
+    "num_blocks": 4,
+    "dropout": 0.3
+  },
+  "training_params": {
+    "epochs": 50,
+    "batch_size": 256,
+    "lr": 0.0001,
+    "weight_decay": 1e-4,
+    "lr_scheduler": true,
+    "patience": 10,
+    "lr_decay_factor": 0.5,
+    "lr_patience": 5
+  },
+  "output": {
+    "save_checkpoint": true,
+    "save_predictions": true,
+    "save_attention_weights": false
+  }
+}

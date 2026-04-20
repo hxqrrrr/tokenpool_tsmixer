@@ -24,7 +24,7 @@ def scoring_function(predicted, real, max_rul):
         max_rul: Maximum RUL value for denormalization
         
     Returns:
-        Total score
+        Mean score (N-CMAPSS standard)
     """
     score = 0
     num = predicted.size(0)
@@ -40,7 +40,8 @@ def scoring_function(predicted, real, max_rul):
             # Early prediction (less dangerous)
             score = score + (torch.exp((pred_denorm - real_denorm) / 10) - 1)
     
-    return score
+    # ✅ 修复：返回 Mean Score 而非 Sum Score
+    return score / num
 
 
 def calculate_rmse(predicted, real, max_rul):
@@ -69,7 +70,7 @@ def phm_score(predicted, real):
         real: True RUL values (denormalized)
         
     Returns:
-        Total score
+        Mean score (N-CMAPSS standard)
     """
     predicted = np.array(predicted).flatten()
     real = np.array(real).flatten()
@@ -85,7 +86,8 @@ def phm_score(predicted, real):
             # Early prediction (less dangerous)
             score += np.exp(d / 10) - 1
     
-    return score
+    # ✅ 修复：返回 Mean Score 而非 Sum Score
+    return score / len(diff)
 
 
 # ==================== Random Seed ====================
